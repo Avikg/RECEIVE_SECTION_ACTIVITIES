@@ -1,4 +1,4 @@
-# ⚡ WBSEDCL Receive Section — Document Management System
+# ⚡ POWER DISCOM Receive Section — Document Management System
 
 A web-based document tracking and routing system for the WBSEDCL Receive Section. Built with Flask + SQLite backend and a single-page vanilla JS frontend.
 
