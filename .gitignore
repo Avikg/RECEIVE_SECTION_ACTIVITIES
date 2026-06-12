@@ -1,0 +1,11 @@
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.mdb
+*.accdb
+
+node_modules/
+__pycache__/
+.env
+*.pyc

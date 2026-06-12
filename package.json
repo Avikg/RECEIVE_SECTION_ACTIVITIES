@@ -1,0 +1,15 @@
+{
+  "name": "wbsedcl-receive-section",
+  "version": "1.0.0",
+  "description": "WBSEDCL Receive Section Document Management System",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^9.4.3",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
