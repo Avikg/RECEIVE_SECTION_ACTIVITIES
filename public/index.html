@@ -138,7 +138,12 @@
 <!-- LOGIN -->
 <div id="login-screen">
   <div class="login-box">
-    <div class="logo"><h1>⚡ WBSEDCL</h1><p>Receive Section Management</p></div>
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <h1>WBSEDCL</h1>
+      <p>Receive Section Management System</p>
+    </div>
+    <div class="login-divider"></div>
     <div id="login-error"></div>
     <div class="form-group"><label>Username</label><input id="l-user" placeholder="Enter username" autocomplete="username"></div>
     <div class="form-group"><label>Password</label><input type="password" id="l-pass" placeholder="Enter password" autocomplete="current-password"></div>
@@ -157,6 +162,7 @@
       </div>
       <nav class="sidebar-nav" id="sidebar-nav"></nav>
       <div class="sidebar-footer" id="sidebar-footer">
+        <button id="btn-backup" class="btn-logout" onclick="downloadBackup()" style="display:none;margin-bottom:6px;background:rgba(79,70,229,.25);border:1px solid rgba(79,70,229,.4);color:#c7d2fe;">💾 Backup DB</button>
         <button class="btn-logout" onclick="doLogout()">🚪 Logout</button>
       </div>
     </div>
@@ -252,7 +258,8 @@ function roleBadge(r) {
 
 function showToast(msg, type = 'success') {
   const t = document.createElement('div');
-  t.className = 'alert alert-' + type;
+  t.className = 'toast';
+  t.style.background = type==='error'?'linear-gradient(135deg,#dc2626,#ef4444)':'linear-gradient(135deg,#059669,#10b981)';
   t.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;min-width:260px;box-shadow:0 4px 20px rgba(0,0,0,.15)';
   t.textContent = msg;
   document.body.appendChild(t);
@@ -311,16 +318,8 @@ async function initApp() {
     currentUser.section_name || 'Sectional';
   buildNav();
   if (currentUser.role === 'admin') {
-    const footer = document.getElementById('sidebar-footer');
-    if (footer && !document.getElementById('btn-backup')) {
-      const btn = document.createElement('button');
-      btn.id        = 'btn-backup';
-      btn.className = 'btn-logout';
-      btn.style.cssText = 'margin-top:6px;background:rgba(255,255,255,.08);';
-      btn.innerHTML = '&#x1F4BE; Backup DB';
-      btn.onclick   = downloadBackup;
-      footer.appendChild(btn);
-    }
+    const b = document.getElementById('btn-backup');
+    if (b) b.style.display = 'flex';
   }
   navigate('dashboard');
 }
@@ -469,12 +468,12 @@ async function renderDashboard() {
 
     C.innerHTML = `
       <div class="stats-grid">
-        <div class="stat-card blue"><div class="stat-label">My Documents</div><div class="stat-value">${mine.length}</div><div class="stat-sub">In my possession</div></div>
-        <div class="stat-card green"><div class="stat-label">Total Active</div><div class="stat-value">${holdings.length}</div><div class="stat-sub">Across all sections</div></div>
-        <div class="stat-card orange"><div class="stat-label">Notesheets</div><div class="stat-value">${types.Notesheet}</div></div>
-        <div class="stat-card blue"><div class="stat-label">Bills</div><div class="stat-value">${types.Bill}</div></div>
-        <div class="stat-card green"><div class="stat-label">Letters</div><div class="stat-value">${types.Letter}</div></div>
-        <div class="stat-card red"><div class="stat-label">Overdue (5+ days)</div><div class="stat-value">${overdue}</div></div>
+        <div class="stat-card blue"><div class="stat-label">My Documents</div><div class="stat-value">${mine.length}</div><div class="stat-sub">In my possession</div><div class="stat-icon">📄</div></div>
+        <div class="stat-card green"><div class="stat-label">Total Active</div><div class="stat-value">${holdings.length}</div><div class="stat-sub">Across all sections</div><div class="stat-icon">📊</div></div>
+        <div class="stat-card purple"><div class="stat-label">Notesheets</div><div class="stat-value">${types.Notesheet}</div><div class="stat-icon">📝</div></div>
+        <div class="stat-card teal"><div class="stat-label">Bills</div><div class="stat-value">${types.Bill}</div><div class="stat-icon">🧾</div></div>
+        <div class="stat-card orange"><div class="stat-label">Letters</div><div class="stat-value">${types.Letter}</div><div class="stat-icon">✉️</div></div>
+        <div class="stat-card red"><div class="stat-label">Overdue (5+ days)</div><div class="stat-value">${overdue}</div><div class="stat-sub">Needs attention</div><div class="stat-icon">🔴</div></div>
       </div>
       <div class="card">
         <div class="card-header">
@@ -587,38 +586,60 @@ function getFromWhom(selectId, otherId) {
 function renderReceive() {
   const today = new Date().toISOString().slice(0, 10);
   document.getElementById('page-content').innerHTML = `
-    <div class="card" style="max-width:660px">
-      <div class="card-header"><h3>📥 Receive New Document</h3></div>
-      <div class="card-body">
-        <div id="recv-err" class="alert alert-error" style="display:none"></div>
-        <div id="recv-ok"  class="alert alert-success" style="display:none"></div>
-        <div class="form-row">
-          <div class="form-group"><label>Document Type *</label>
-            <select id="rv-type" onchange="toggleContractorField('rv-type','rv-contractor-wrap')">
-              <option value="">Select type...</option><option>Notesheet</option><option>Bill</option><option>Letter</option>
-            </select>
-          </div>
-          <div class="form-group"><label>Document Number *</label>
-            <input id="rv-num" placeholder="e.g. WBSEDCL/2024/001">
+    <div style="max-width:860px">
+      <div class="card">
+        <div class="card-header" style="background:linear-gradient(135deg,#4f46e5,#6366f1);border-bottom:none;padding:22px 28px;">
+          <div>
+            <h3 style="color:#fff;font-size:18px;letter-spacing:-.3px;">📥 Receive New Document</h3>
+            <p style="color:rgba(255,255,255,.7);font-size:12px;margin-top:3px;">Fill in the details below to register a new incoming document</p>
           </div>
         </div>
-        <div class="form-group"><label>Subject *</label><input id="rv-sub" placeholder="Brief subject"></div>
-        <div class="form-group"><label>Description</label><textarea id="rv-desc" placeholder="Optional details"></textarea></div>
-        <div id="rv-contractor-wrap" style="display:none" class="form-group">
-          <label>Contractor / Consumer Name</label>
-          <input id="rv-contractor" placeholder="Enter contractor or consumer name">
+        <div class="card-body" style="padding:28px">
+          <div id="recv-err" class="alert alert-error" style="display:none"></div>
+          <div id="recv-ok"  class="alert alert-success" style="display:none"></div>
+
+          <div style="display:grid;grid-template-columns:1fr 2fr;gap:20px;margin-bottom:0">
+            <div class="form-group"><label>Document Type *</label>
+              <select id="rv-type" onchange="toggleContractorField('rv-type','rv-contractor-wrap')">
+                <option value="">Select type...</option><option>Notesheet</option><option>Bill</option><option>Letter</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Document Number *</label>
+              <input id="rv-num" placeholder="e.g. WBSEDCL/2024/001">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Subject *</label>
+            <input id="rv-sub" placeholder="Enter a clear and descriptive subject line" style="font-size:14px;padding:12px 16px;">
+          </div>
+
+          <div class="form-group">
+            <label>Description</label>
+            <textarea id="rv-desc" placeholder="Optional — add any additional details, references, or context here..." style="min-height:100px;font-size:13px;line-height:1.6"></textarea>
+          </div>
+
+          <div id="rv-contractor-wrap" style="display:none" class="form-group">
+            <label>Contractor / Consumer Name</label>
+            <input id="rv-contractor" placeholder="Enter contractor or consumer name">
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px">
+            <div class="form-group"><label>Date Received *</label><input type="date" id="rv-date" value="${today}"></div>
+            <div class="form-group"><label>CCC Forward No</label><input id="rv-fwd-no" placeholder="e.g. CCC/2026/001"></div>
+            <div class="form-group"><label>CCC Forward Date</label><input type="date" id="rv-fwd-date"></div>
+          </div>
+
+          <div class="form-group"><label>From Whom Received</label>
+            ${fromWhomSelectHtml('rv-from-sel','rv-from-other','rv-from-wrap','')}
+          </div>
+
+          <div style="margin-top:8px">
+            <button class="btn btn-success btn-full" onclick="submitReceive()" style="padding:14px;font-size:15px;border-radius:12px;background:linear-gradient(135deg,#059669,#10b981);box-shadow:0 4px 16px rgba(5,150,105,.35)">
+              📥 Receive Document
+            </button>
+          </div>
         </div>
-        <div class="form-row">
-          <div class="form-group"><label>Date Received *</label><input type="date" id="rv-date" value="${today}"></div>
-          <div class="form-group"><label>CCC Forward No</label><input id="rv-fwd-no" placeholder="e.g. CCC/2026/001"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label>CCC Forward Date</label><input type="date" id="rv-fwd-date"></div>
-        </div>
-        <div class="form-group"><label>From Whom Received</label>
-          ${fromWhomSelectHtml('rv-from-sel','rv-from-other','rv-from-wrap','')}
-        </div>
-        <button class="btn btn-success btn-full" onclick="submitReceive()">📥 Receive Document</button>
       </div>
     </div>`;
 }
@@ -988,10 +1009,10 @@ async function renderReports() {
 
     C.innerHTML = `
       <div class="stats-grid" style="margin-bottom:24px">
-        <div class="stat-card blue"><div class="stat-label">Total Active</div><div class="stat-value">${holdings.length}</div></div>
-        <div class="stat-card red"><div class="stat-label">Overdue (5+ days)</div><div class="stat-value">${overdue}</div></div>
-        <div class="stat-card orange"><div class="stat-label">Warning (3–4 days)</div><div class="stat-value">${warn}</div></div>
-        <div class="stat-card green"><div class="stat-label">Fresh (0–2 days)</div><div class="stat-value">${fresh}</div></div>
+        <div class="stat-card blue"><div class="stat-label">Total Active</div><div class="stat-value">${holdings.length}</div><div class="stat-icon">📊</div></div>
+        <div class="stat-card red"><div class="stat-label">Overdue (5+ days)</div><div class="stat-value">${overdue}</div><div class="stat-icon">🔴</div></div>
+        <div class="stat-card orange"><div class="stat-label">Warning (3–4 days)</div><div class="stat-value">${warn}</div><div class="stat-icon">⚠️</div></div>
+        <div class="stat-card green"><div class="stat-label">Fresh (0–2 days)</div><div class="stat-value">${fresh}</div><div class="stat-icon">✅</div></div>
       </div>
       ${secCards || empty('✅', 'No active documents')}`;
   } catch (e) { C.innerHTML = errBox(e.message); }
@@ -1374,14 +1395,17 @@ async function saveUser(id) {
 }
 
 async function downloadBackup() {
-  showToast('Preparing backup…');
+  const btn = document.getElementById('btn-backup');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.innerHTML = '⏳ Preparing...'; btn.disabled = true; }
   try {
     const r = await fetch('/api/admin/backup', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     if (!r.ok) {
       const d = await r.json().catch(() => ({}));
-      showToast(d.error || 'Backup failed', 'error'); return;
+      showToast(d.error || 'Backup failed', 'error');
+      return;
     }
     const blob = await r.blob();
     const url  = URL.createObjectURL(blob);
@@ -1392,8 +1416,12 @@ async function downloadBackup() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('Backup downloaded!');
-  } catch (e) { showToast(e.message, 'error'); }
+    showToast('✅ Backup downloaded!');
+  } catch (e) {
+    showToast('Backup error: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.innerHTML = orig; btn.disabled = false; }
+  }
 }
 </script>
 </body>

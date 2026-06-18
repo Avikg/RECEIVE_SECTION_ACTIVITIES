@@ -2,13 +2,24 @@
 # Run: python app.py
 
 from flask import Flask, request, jsonify, send_from_directory
-import sqlite3, bcrypt, jwt, os
+import sqlite3, bcrypt, jwt, os, sys
 from datetime import datetime, timedelta
 from functools import wraps
 
-app = Flask(__name__, static_folder='public', static_url_path='')
+# ── PATH RESOLUTION (works both normally and as a PyInstaller .exe) ───────────
+if getattr(sys, 'frozen', False):
+    # Running inside a PyInstaller bundle
+    _BUNDLE_DIR = sys._MEIPASS                          # extracted files live here
+    _EXE_DIR    = os.path.dirname(sys.executable)      # writable dir next to the .exe
+else:
+    _BUNDLE_DIR = os.path.dirname(os.path.abspath(__file__))
+    _EXE_DIR    = _BUNDLE_DIR
+
+_PUBLIC_DIR = os.path.join(_BUNDLE_DIR, 'public')
+DB_FILE     = os.path.join(_EXE_DIR, 'wbsedcl.db')
+
+app = Flask(__name__, static_folder=_PUBLIC_DIR, static_url_path='')
 JWT_SECRET = 'wbsedcl-receive-secret-2024'
-DB_FILE = 'wbsedcl.db'
 
 # ── DATABASE ─────────────────────────────────────────────────────────────────
 def get_db():
@@ -889,27 +900,72 @@ def activity_log():
 @admin_required
 def backup_db():
     import io, tempfile, os
-    from flask import send_file
-    # Use sqlite3 backup API — safe even with WAL mode / open connections
-    tmp_path = tempfile.mktemp(suffix='.db')
+    from flask import send_file, make_response
     try:
+        # Backup into an in-memory SQLite DB, then write to BytesIO
+        buf = io.BytesIO()
+        tmp_path = tempfile.mktemp(suffix='.db')
         src = sqlite3.connect(DB_FILE)
         dst = sqlite3.connect(tmp_path)
         src.backup(dst)
         src.close()
         dst.close()
+        with open(tmp_path, 'rb') as f:
+            buf.write(f.read())
+        os.unlink(tmp_path)
+        buf.seek(0)
         filename = 'wbsedcl_backup_' + datetime.now().strftime('%Y%m%d_%H%M%S') + '.db'
-        return send_file(
-            tmp_path,
-            as_attachment=True,
-            download_name=filename,
-            mimetype='application/octet-stream'
-        )
+        response = make_response(buf.read())
+        response.headers['Content-Type'] = 'application/octet-stream'
+        response.headers['Content-Disposition'] = 'attachment; filename="' + filename + '"'
+        return response
     except Exception as e:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
         return jsonify(error=str(e)), 500
 
+# -- ENTRY POINT -------------------------------------------------------------
+def _show_error(title, msg):
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(0, str(msg), str(title), 0x10)
+    except Exception:
+        print('ERROR: ' + str(title) + ' - ' + str(msg))
+        input('Press Enter to exit...')
+
 if __name__ == '__main__':
-    print("Starting WBSEDCL Receive Section server on http://localhost:3000")
-    app.run(host='0.0.0.0', port=3000, debug=False)
+    import threading, webbrowser, time
+
+    try:
+        migrate_db()
+        init_db()
+    except Exception as e:
+        _show_error('WBSEDCL - DB Error', 'Cannot initialise database. ' + str(e))
+        import sys; sys.exit(1)
+
+    def _open_browser():
+        time.sleep(2.0)
+        webbrowser.open('http://localhost:3000')
+
+    threading.Thread(target=_open_browser, daemon=True).start()
+
+    print('=' * 50)
+    print('  WBSEDCL Receive Section')
+    print('  Server: http://localhost:3000')
+    print('  Login:  admin / admin123')
+    print('  Ctrl+C to stop')
+    print('=' * 50)
+
+    try:
+        app.run(host='0.0.0.0', port=3000, debug=False, use_reloader=False)
+    except OSError as e:
+        msg = str(e)
+        if 'Address already in use' in msg or '10048' in msg:
+            _show_error('WBSEDCL - Port Busy',
+                        'Port 3000 is already in use. '
+                        'The app may already be running. '
+                        'Open http://localhost:3000 in your browser.')
+        else:
+            _show_error('WBSEDCL - Network Error', msg)
+        import sys; sys.exit(1)
+    except Exception as e:
+        _show_error('WBSEDCL - Error', str(e))
+        import sys; sys.exit(1)
