@@ -335,11 +335,12 @@ const NAV = [
   { id: 'users',     icon: '👥', label: 'User Management',    roles: ['admin'] },
   { id: 'sections',  icon: '🏢', label: 'Section Management', roles: ['admin'] },
   { id: 'activity',  icon: '🕐', label: 'Activity Log',       roles: ['admin'] },
+  { id: 'export',    icon: '📤', label: 'Export to Excel',    roles: ['admin','head','sectional'] },
 ];
 const PAGE_TITLES = {
   dashboard: 'Dashboard', 'my-docs': 'My Documents', receive: 'Receive Document',
   search: 'Search Documents', reports: 'Reports', users: 'User Management',
-  sections: 'Section Management', activity: 'Activity Log'
+  sections: 'Section Management', activity: 'Activity Log', export: 'Export to Excel'
 };
 
 function buildNav() {
@@ -365,7 +366,7 @@ function navigate(page) {
   const PAGES = {
     dashboard: renderDashboard, 'my-docs': renderMyDocs, receive: renderReceive,
     search: renderSearch, reports: renderReports, users: renderUsers,
-    sections: renderSections, activity: renderActivity
+    sections: renderSections, activity: renderActivity, export: renderExport
   };
   if (PAGES[page]) PAGES[page]();
 }
@@ -1423,6 +1424,114 @@ async function downloadBackup() {
     if (btn) { btn.innerHTML = orig; btn.disabled = false; }
   }
 }
+
+// ── EXPORT TO EXCEL ──────────────────────────────────────────────────────────
+function renderExport() {
+  document.getElementById('page-content').innerHTML = `
+  <div style="max-width:680px;margin:0 auto;">
+    <div class="card" style="padding:32px;">
+      <h2 style="margin:0 0 6px;font-size:1.25rem;font-weight:700;color:var(--text);">📤 Export Documents to Excel</h2>
+      <p style="margin:0 0 28px;color:var(--text-muted);font-size:14px;">Filter by date range and document type, then download as a CSV file that opens directly in Excel.</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">From Date</label>
+          <input type="date" id="exp-from" class="form-control">
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">To Date</label>
+          <input type="date" id="exp-to" class="form-control">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Document Type</label>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
+            <input type="checkbox" id="exp-notesheet" value="Notesheet" checked style="width:16px;height:16px;"> Notesheet
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
+            <input type="checkbox" id="exp-bill" value="Bill" checked style="width:16px;height:16px;"> Bill
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
+            <input type="checkbox" id="exp-letter" value="Letter" checked style="width:16px;height:16px;"> Letter
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select id="exp-status" class="form-control" style="max-width:220px;">
+          <option value="">All Statuses</option>
+          <option value="Active">Active</option>
+          <option value="Closed">Closed</option>
+        </select>
+      </div>
+
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:24px;font-size:13px;color:var(--text-muted);">
+        <strong style="color:var(--text);">Exported columns:</strong>
+        Sr No, Document Type, Document Number, Subject, Status, Received Date,
+        CCC Forward No, CCC Forward Date, From Whom, Contractor/Consumer, Received By,
+        Current Holder, Current Section, Days Pending, Total Transfers, Last Movement, Description
+      </div>
+
+      <div style="display:flex;gap:12px;align-items:center;">
+        <button class="btn btn-primary" id="exp-btn" onclick="doExport()" style="padding:10px 28px;font-size:15px;">
+          ⬇️ Download CSV
+        </button>
+        <span id="exp-msg" style="font-size:13px;color:var(--text-muted);"></span>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function doExport() {
+  const from   = document.getElementById('exp-from').value;
+  const to     = document.getElementById('exp-to').value;
+  const status = document.getElementById('exp-status').value;
+  const types  = ['exp-notesheet','exp-bill','exp-letter']
+    .filter(id => document.getElementById(id) && document.getElementById(id).checked)
+    .map(id => document.getElementById(id).value);
+
+  if (types.length === 0) {
+    showToast('Select at least one document type', 'error'); return;
+  }
+
+  const btn = document.getElementById('exp-btn');
+  const msg = document.getElementById('exp-msg');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparing...'; }
+  if (msg) msg.textContent = '';
+
+  try {
+    let url = '/api/export/documents?';
+    if (from)   url += 'from_date=' + encodeURIComponent(from) + '&';
+    if (to)     url += 'to_date='   + encodeURIComponent(to)   + '&';
+    if (status) url += 'status='    + encodeURIComponent(status) + '&';
+    types.forEach(t => { url += 'doc_type=' + encodeURIComponent(t) + '&'; });
+
+    const r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      showToast(d.error || 'Export failed', 'error'); return;
+    }
+    const blob = await r.blob();
+    const count = parseInt(r.headers.get('X-Row-Count') || '0');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'WBSEDCL_Export_' + new Date().toISOString().slice(0,10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+    if (msg) msg.textContent = 'Downloaded successfully!';
+    showToast('Export downloaded!');
+  } catch(e) {
+    showToast('Export error: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⬇️ Download CSV'; }
+  }
+}
+
 </script>
 </body>
 </html>

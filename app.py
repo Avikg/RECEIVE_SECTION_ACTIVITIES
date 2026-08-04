@@ -895,6 +895,106 @@ def activity_log():
         """, params).fetchall()
         return jsonify([dict(r) for r in rows])
 
+@app.route('/api/export/documents')
+@auth_required
+def export_documents():
+    import csv, io
+    from flask import make_response
+    from datetime import datetime as dt
+
+    from_date = request.args.get('from_date', '')
+    to_date   = request.args.get('to_date', '')
+    doc_types = request.args.getlist('doc_type')   # e.g. ['Notesheet','Bill']
+    status    = request.args.get('status', '')      # Active / Closed / ''
+
+    conditions = []
+    params     = []
+
+    if from_date:
+        conditions.append("date(d.received_date) >= date(?)")
+        params.append(from_date)
+    if to_date:
+        conditions.append("date(d.received_date) <= date(?)")
+        params.append(to_date)
+    if doc_types:
+        placeholders = ','.join('?' * len(doc_types))
+        conditions.append(f"d.doc_type IN ({placeholders})")
+        params.extend(doc_types)
+    if status:
+        conditions.append("d.status = ?")
+        params.append(status)
+
+    where = ('WHERE ' + ' AND '.join(conditions)) if conditions else ''
+
+    with get_db() as db:
+        rows = db.execute(f"""
+            SELECT
+                d.id,
+                d.doc_type,
+                d.doc_number,
+                d.subject,
+                d.status,
+                d.received_date,
+                d.ccc_forward_no,
+                d.ccc_forward_date,
+                d.from_whom,
+                d.contractor_consumer_name AS contractor_name,
+                d.description,
+                d.created_at,
+                cu.name  AS current_holder,
+                cs.name  AS current_section,
+                ru.name  AS received_by,
+                (SELECT COUNT(*) FROM movements m WHERE m.document_id = d.id) AS total_transfers,
+                (SELECT MAX(m.created_at) FROM movements m WHERE m.document_id = d.id) AS last_moved_at,
+                CAST(julianday('now') - julianday(d.received_date) AS INTEGER) AS days_pending
+            FROM documents d
+            LEFT JOIN users    cu ON d.current_holder_id  = cu.id
+            LEFT JOIN sections cs ON d.current_section_id = cs.id
+            LEFT JOIN users    ru ON d.created_by_id      = ru.id
+            {where}
+            ORDER BY d.received_date DESC, d.id DESC
+        """, params).fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'Sr No', 'Document Type', 'Document Number', 'Subject', 'Status',
+        'Received Date', 'CCC Forward No', 'CCC Forward Date',
+        'From Whom Received', 'Contractor / Consumer Name',
+        'Received By', 'Current Holder', 'Current Section',
+        'Days Pending', 'Total Transfers', 'Last Movement',
+        'Description', 'Entry Created At'
+    ])
+    for i, r in enumerate(rows, 1):
+        writer.writerow([
+            i,
+            r['doc_type']         or '',
+            r['doc_number']       or '',
+            r['subject']          or '',
+            r['status']           or '',
+            r['received_date']    or '',
+            r['ccc_forward_no']   or '',
+            r['ccc_forward_date'] or '',
+            r['from_whom']        or '',
+            r['contractor_name']  or '',
+            r['received_by']      or '',
+            r['current_holder']   or '',
+            r['current_section']  or '',
+            r['days_pending']     or 0,
+            r['total_transfers']  or 0,
+            r['last_moved_at']    or '',
+            r['description']      or '',
+            r['created_at']       or '',
+        ])
+
+    csv_data = output.getvalue()
+    fname = 'WBSEDCL_Export_' + dt.now().strftime('%Y%m%d_%H%M%S') + '.csv'
+    response = make_response(csv_data)
+    response.headers['Content-Type']        = 'text/csv; charset=utf-8'
+    response.headers['Content-Disposition'] = 'attachment; filename="' + fname + '"'
+    return response
+
+
 @app.route('/api/admin/backup')
 @auth_required
 @admin_required
