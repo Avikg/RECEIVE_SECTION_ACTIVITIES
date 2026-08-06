@@ -964,8 +964,15 @@ async function doSearch() {
     el.innerHTML = `<div class="card">
       <div class="card-header"><h3>Results (${docs.length})</h3></div>
       <div class="table-wrapper"><table>
-        <thead><tr><th>Doc No.</th><th>Type</th><th>Subject</th><th>Received</th><th>Holder</th><th>Section</th><th>Status</th><th>Days</th><th></th></tr></thead>
-        <tbody>${docs.map(d => `<tr>
+        <thead><tr><th>Doc No.</th><th>Type</th><th>Subject</th><th>Received</th><th>Holder</th><th>Section</th><th>Status</th><th>Days</th><th>Actions</th></tr></thead>
+        <tbody>${docs.map(d => {
+          const canRoute = d.status === 'Active' && (
+            currentUser.role === 'admin' ||
+            currentUser.role === 'head' ||
+            currentUserIsReceive() ||
+            d.current_holder_id === currentUser.id
+          );
+          return `<tr>
           <td><strong>${esc(d.doc_number)}</strong></td>
           <td>${typeBadge(d.doc_type)}</td>
           <td>${esc(d.subject)}</td>
@@ -974,8 +981,11 @@ async function doSearch() {
           <td>${esc(d.current_section_name || '–')}</td>
           <td>${statusBadge(d.status)}</td>
           <td>${daysPill(d.days_with_holder)}</td>
-          <td><button class="btn btn-outline btn-sm" onclick="showDocDetail(${d.id})">View</button></td>
-        </tr>`).join('')}
+          <td style="white-space:nowrap">
+            ${canRoute ? `<button class="btn btn-primary btn-sm" style="margin-right:4px" onclick="showTransferModal(${d.id},'${esc(d.doc_number)}')">↗ Route</button>` : ''}
+            <button class="btn btn-outline btn-sm" onclick="showDocDetail(${d.id})">View</button>
+          </td>
+        </tr>`;}).join('')}
         </tbody></table></div></div>`;
   } catch (e) { el.innerHTML = errBox(e.message); }
 }
