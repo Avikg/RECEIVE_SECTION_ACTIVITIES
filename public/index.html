@@ -336,11 +336,12 @@ const NAV = [
   { id: 'sections',  icon: '🏢', label: 'Section Management', roles: ['admin'] },
   { id: 'activity',  icon: '🕐', label: 'Activity Log',       roles: ['admin'] },
   { id: 'export',    icon: '📤', label: 'Export to Excel',    roles: ['admin','head','sectional'] },
+  { id: 'contractors', icon: '🏢', label: 'Contractor Mgmt',    roles: ['admin'] },
 ];
 const PAGE_TITLES = {
   dashboard: 'Dashboard', 'my-docs': 'My Documents', receive: 'Receive Document',
   search: 'Search Documents', reports: 'Reports', users: 'User Management',
-  sections: 'Section Management', activity: 'Activity Log', export: 'Export to Excel'
+  sections: 'Section Management', activity: 'Activity Log', export: 'Export to Excel', contractors: 'Contractor Management'
 };
 
 function buildNav() {
@@ -366,7 +367,7 @@ function navigate(page) {
   const PAGES = {
     dashboard: renderDashboard, 'my-docs': renderMyDocs, receive: renderReceive,
     search: renderSearch, reports: renderReports, users: renderUsers,
-    sections: renderSections, activity: renderActivity, export: renderExport
+    sections: renderSections, activity: renderActivity, export: renderExport, contractors: renderContractors
   };
   if (PAGES[page]) PAGES[page]();
 }
@@ -552,7 +553,9 @@ async function closeDoc(id) {
 // ── RECEIVE ──────────────────────────────────────────────────────────────────
 function toggleContractorField(typeSelectId, wrapId) {
   const t = document.getElementById(typeSelectId).value;
-  document.getElementById(wrapId).style.display = (t === 'Bill' || t === 'Letter') ? 'block' : 'none';
+  const show = (t === 'Bill' || t === 'Letter');
+  document.getElementById(wrapId).style.display = show ? 'block' : 'none';
+  if (show && wrapId === 'rv-contractor-wrap') loadContractorDropdown('rv-contractor', '');
 }
 
 function fromWhomSelectHtml(selectId, otherId, wrapId, currentVal) {
@@ -622,7 +625,9 @@ function renderReceive() {
 
           <div id="rv-contractor-wrap" style="display:none" class="form-group">
             <label>Contractor / Consumer Name</label>
-            <input id="rv-contractor" placeholder="Enter contractor or consumer name">
+            <select id="rv-contractor">
+              <option value="">-- Select Contractor / Consumer --</option>
+            </select>
           </div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px">
@@ -643,6 +648,7 @@ function renderReceive() {
         </div>
       </div>
     </div>`;
+  loadContractorDropdown('rv-contractor', '');
 }
 async function submitReceive() {
   const doc_type         = document.getElementById('rv-type').value;
@@ -1530,6 +1536,142 @@ async function doExport() {
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '⬇️ Download CSV'; }
   }
+}
+
+
+// ── CONTRACTOR MANAGEMENT ────────────────────────────────────────────────────
+let _contractorList = [];
+
+async function loadContractorDropdown(selectId, selectedName) {
+  try {
+    const r = await fetch('/api/contractors', { headers: { 'Authorization': 'Bearer ' + token } });
+    _contractorList = await r.json();
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    const prev = sel.value || selectedName || '';
+    sel.innerHTML = '<option value="">-- Select Contractor / Consumer --</option>';
+    _contractorList.filter(c => c.active).forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.name;
+      opt.textContent = c.name;
+      if (c.name === prev) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  } catch(e) {}
+}
+
+async function renderContractors() {
+  document.getElementById('page-content').innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-muted);">Loading...</div>';
+  let rows = [];
+  try {
+    const r = await fetch('/api/contractors', { headers: { 'Authorization': 'Bearer ' + token } });
+    rows = await r.json();
+  } catch(e) { showToast('Failed to load contractors', 'error'); return; }
+
+  document.getElementById('page-content').innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+    <div>
+      <h3 style="margin:0;font-size:1rem;font-weight:700;">${rows.length} Contractor(s) / Consumer(s)</h3>
+      <p style="margin:4px 0 0;font-size:13px;color:var(--text-muted);">Names available in the Receive Document dropdown</p>
+    </div>
+    <button class="btn btn-primary" onclick="openAddContractor()">+ Add New</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table class="table">
+      <thead><tr><th>#</th><th>Name</th><th>Status</th><th>Added On</th><th>Actions</th></tr></thead>
+      <tbody id="contractors-tbody">
+      ${rows.length === 0 ? '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:32px;">No contractors yet. Click Add New to get started.</td></tr>' : ''}
+      ${rows.map((c,i) => `
+        <tr>
+          <td>${i+1}</td>
+          <td><strong>${esc(c.name)}</strong></td>
+          <td><span class="badge ${c.active ? 'badge-success' : 'badge-danger'}">${c.active ? 'Active' : 'Inactive'}</span></td>
+          <td style="color:var(--text-muted);font-size:13px;">${(c.created_at||'').slice(0,10)}</td>
+          <td>
+            <button class="btn btn-sm" style="margin-right:6px;" onclick="openEditContractor(${c.id},'${esc(c.name)}',${c.active})">Edit</button>
+            <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border-color:#fca5a5;" onclick="deleteContractor(${c.id},'${esc(c.name)}')">Delete</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+
+  <div id="modal-contractor" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:none;align-items:center;justify-content:center;">
+    <div class="card" style="width:420px;padding:32px;position:relative;">
+      <h3 id="ctr-modal-title" style="margin:0 0 20px;font-size:1.1rem;">Add Contractor</h3>
+      <input type="hidden" id="ctr-edit-id" value="">
+      <div class="form-group">
+        <label class="form-label">Name *</label>
+        <input id="ctr-name" class="form-control" placeholder="Enter contractor or consumer name">
+      </div>
+      <div class="form-group" id="ctr-active-wrap">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="ctr-active" checked> Active (appears in dropdown)
+        </label>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">
+        <button class="btn" onclick="closeContractorModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveContractor()">Save</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function openAddContractor() {
+  document.getElementById('ctr-modal-title').textContent = 'Add Contractor / Consumer';
+  document.getElementById('ctr-edit-id').value = '';
+  document.getElementById('ctr-name').value = '';
+  document.getElementById('ctr-active').checked = true;
+  document.getElementById('ctr-active-wrap').style.display = 'none';
+  const m = document.getElementById('modal-contractor');
+  if (m) { m.style.display = 'flex'; }
+}
+
+function openEditContractor(id, name, active) {
+  document.getElementById('ctr-modal-title').textContent = 'Edit Contractor / Consumer';
+  document.getElementById('ctr-edit-id').value = id;
+  document.getElementById('ctr-name').value = name;
+  document.getElementById('ctr-active').checked = !!active;
+  document.getElementById('ctr-active-wrap').style.display = 'block';
+  const m = document.getElementById('modal-contractor');
+  if (m) { m.style.display = 'flex'; }
+}
+
+function closeContractorModal() {
+  const m = document.getElementById('modal-contractor');
+  if (m) m.style.display = 'none';
+}
+
+async function saveContractor() {
+  const id   = document.getElementById('ctr-edit-id').value;
+  const name = document.getElementById('ctr-name').value.trim();
+  const active = document.getElementById('ctr-active').checked ? 1 : 0;
+  if (!name) { showToast('Name is required', 'error'); return; }
+  try {
+    const method = id ? 'PUT' : 'POST';
+    const url    = id ? '/api/contractors/' + id : '/api/contractors';
+    const r = await fetch(url, {
+      method, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, active })
+    });
+    const d = await r.json();
+    if (!r.ok) { showToast(d.error || 'Save failed', 'error'); return; }
+    showToast(id ? 'Contractor updated!' : 'Contractor added!');
+    closeContractorModal();
+    renderContractors();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+async function deleteContractor(id, name) {
+  if (!confirm('Delete "' + name + '"? This only removes it from the dropdown — existing documents are not affected.')) return;
+  try {
+    const r = await fetch('/api/contractors/' + id, {
+      method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!r.ok) { showToast('Delete failed', 'error'); return; }
+    showToast('Deleted!');
+    renderContractors();
+  } catch(e) { showToast('Error: ' + e.message, 'error'); }
 }
 
 </script>

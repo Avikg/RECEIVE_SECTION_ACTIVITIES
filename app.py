@@ -92,6 +92,12 @@ def init_db():
                 logged_out_at TEXT,
                 is_active     INTEGER NOT NULL DEFAULT 1
             );
+            CREATE TABLE IF NOT EXISTS contractors (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT NOT NULL UNIQUE,
+                active     INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            );
         """)
         row = db.execute("SELECT COUNT(*) as c FROM sections").fetchone()
         if row['c'] == 0:
@@ -155,7 +161,30 @@ def migrate_db():
                 is_active INTEGER NOT NULL DEFAULT 1
             )""")
             print("Created sessions table")
+        if 'contractors' not in tables:
+            conn.execute('''CREATE TABLE contractors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )''')
+            print("Created contractors table")
         conn.commit()
+        # Always seed contractors from existing document data (safe — INSERT OR IGNORE)
+        seed_rows = conn.execute(
+            "SELECT DISTINCT contractor_consumer_name FROM documents "
+            "WHERE contractor_consumer_name IS NOT NULL AND contractor_consumer_name != ''"
+        ).fetchall()
+        seeded = 0
+        for r in seed_rows:
+            try:
+                conn.execute("INSERT OR IGNORE INTO contractors (name) VALUES (?)", (r[0],))
+                seeded += 1
+            except Exception:
+                pass
+        if seeded:
+            conn.commit()
+            print(f"Seeded {seeded} contractor name(s) from existing documents")
         row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='movements'").fetchone()
         if row and 'Routed' not in row['sql']:
             print("Migrating movements table to add Routed action...")
@@ -894,6 +923,63 @@ def activity_log():
             ORDER BY m.created_at DESC
         """, params).fetchall()
         return jsonify([dict(r) for r in rows])
+
+# ── CONTRACTORS ──────────────────────────────────────────────────────────────
+@app.route('/api/contractors', methods=['GET'])
+@auth_required
+def list_contractors():
+    with get_db() as db:
+        rows = db.execute("SELECT * FROM contractors ORDER BY name").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/contractors', methods=['POST'])
+@auth_required
+@admin_required
+def create_contractor():
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify(error='Name is required'), 400
+    with get_db() as db:
+        try:
+            db.execute("INSERT INTO contractors (name) VALUES (?)", (name,))
+            db.commit()
+            row = db.execute("SELECT * FROM contractors WHERE name=?", (name,)).fetchone()
+            return jsonify(dict(row)), 201
+        except Exception as e:
+            return jsonify(error='Name already exists'), 409
+
+@app.route('/api/contractors/<int:cid>', methods=['PUT'])
+@auth_required
+@admin_required
+def update_contractor(cid):
+    data = request.json or {}
+    name   = (data.get('name') or '').strip()
+    active = data.get('active', 1)
+    if not name:
+        return jsonify(error='Name is required'), 400
+    with get_db() as db:
+        row = db.execute("SELECT id FROM contractors WHERE id=?", (cid,)).fetchone()
+        if not row:
+            return jsonify(error='Not found'), 404
+        try:
+            db.execute("UPDATE contractors SET name=?, active=? WHERE id=?", (name, active, cid))
+            db.commit()
+            return jsonify(dict(db.execute("SELECT * FROM contractors WHERE id=?", (cid,)).fetchone()))
+        except Exception as e:
+            return jsonify(error='Name already exists'), 409
+
+@app.route('/api/contractors/<int:cid>', methods=['DELETE'])
+@auth_required
+@admin_required
+def delete_contractor(cid):
+    with get_db() as db:
+        row = db.execute("SELECT id FROM contractors WHERE id=?", (cid,)).fetchone()
+        if not row:
+            return jsonify(error='Not found'), 404
+        db.execute("DELETE FROM contractors WHERE id=?", (cid,))
+        db.commit()
+    return jsonify(ok=True)
 
 @app.route('/api/export/documents')
 @auth_required
