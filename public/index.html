@@ -1444,61 +1444,94 @@ async function downloadBackup() {
 // ── EXPORT TO EXCEL ──────────────────────────────────────────────────────────
 function renderExport() {
   document.getElementById('page-content').innerHTML = `
-  <div style="max-width:680px;margin:0 auto;">
-    <div class="card" style="padding:32px;">
-      <h2 style="margin:0 0 6px;font-size:1.25rem;font-weight:700;color:var(--text);">📤 Export Documents to Excel</h2>
-      <p style="margin:0 0 28px;color:var(--text-muted);font-size:14px;">Filter by date range and document type, then download as a CSV file that opens directly in Excel.</p>
+  <div style="max-width:900px;margin:0 auto;">
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
-        <div class="form-group" style="margin:0;">
-          <label class="form-label">From Date</label>
-          <input type="date" id="exp-from" class="form-control">
+    <!-- Tab bar -->
+    <div style="display:flex;gap:4px;margin-bottom:20px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:6px;">
+      <button id="exp-tab-docs" onclick="switchExpTab('docs')"
+        style="flex:1;padding:9px 0;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:var(--primary);color:#fff;">
+        📄 Document Export
+      </button>
+      <button id="exp-tab-track" onclick="switchExpTab('track')"
+        style="flex:1;padding:9px 0;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:transparent;color:var(--text-muted);">
+        🗺️ Movement Tracker
+      </button>
+    </div>
+
+    <!-- Document Export tab -->
+    <div id="exp-panel-docs">
+      <div class="card" style="padding:28px;">
+        <h2 style="margin:0 0 6px;font-size:1.15rem;font-weight:700;">📤 Export Documents to Excel</h2>
+        <p style="margin:0 0 24px;color:var(--text-muted);font-size:14px;">Filter and download a full document list as CSV (opens in Excel).</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+          <div class="form-group" style="margin:0;"><label class="form-label">From Date</label><input type="date" id="exp-from" class="form-control"></div>
+          <div class="form-group" style="margin:0;"><label class="form-label">To Date</label><input type="date" id="exp-to" class="form-control"></div>
         </div>
-        <div class="form-group" style="margin:0;">
-          <label class="form-label">To Date</label>
-          <input type="date" id="exp-to" class="form-control">
+        <div class="form-group">
+          <label class="form-label">Document Type</label>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;"><input type="checkbox" id="exp-notesheet" value="Notesheet" checked style="width:16px;height:16px;"> Notesheet</label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;"><input type="checkbox" id="exp-bill" value="Bill" checked style="width:16px;height:16px;"> Bill</label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;"><input type="checkbox" id="exp-letter" value="Letter" checked style="width:16px;height:16px;"> Letter</label>
+          </div>
         </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Document Type</label>
-        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
-            <input type="checkbox" id="exp-notesheet" value="Notesheet" checked style="width:16px;height:16px;"> Notesheet
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
-            <input type="checkbox" id="exp-bill" value="Bill" checked style="width:16px;height:16px;"> Bill
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
-            <input type="checkbox" id="exp-letter" value="Letter" checked style="width:16px;height:16px;"> Letter
-          </label>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select id="exp-status" class="form-control" style="max-width:220px;">
+            <option value="">All Statuses</option><option value="Active">Active</option><option value="Closed">Closed</option>
+          </select>
         </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Status</label>
-        <select id="exp-status" class="form-control" style="max-width:220px;">
-          <option value="">All Statuses</option>
-          <option value="Active">Active</option>
-          <option value="Closed">Closed</option>
-        </select>
-      </div>
-
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:24px;font-size:13px;color:var(--text-muted);">
-        <strong style="color:var(--text);">Exported columns:</strong>
-        Sr No, Document Type, Document Number, Subject, Status, Received Date,
-        CCC Forward No, CCC Forward Date, From Whom, Contractor/Consumer, Received By,
-        Current Holder, Current Section, Days Pending, Total Transfers, Last Movement, Description
-      </div>
-
-      <div style="display:flex;gap:12px;align-items:center;">
-        <button class="btn btn-primary" id="exp-btn" onclick="doExport()" style="padding:10px 28px;font-size:15px;">
-          ⬇️ Download CSV
-        </button>
-        <span id="exp-msg" style="font-size:13px;color:var(--text-muted);"></span>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:var(--text-muted);">
+          <strong style="color:var(--text);">Columns:</strong> Sr No, Type, Doc No, Subject, Status, Received Date, CCC Forward No/Date, From Whom, Contractor/Consumer, Received By, Current Holder, Current Section, Days Pending, Total Transfers, Last Movement, Description
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;">
+          <button class="btn btn-primary" id="exp-btn" onclick="doExport()" style="padding:10px 24px;">⬇️ Download CSV</button>
+          <span id="exp-msg" style="font-size:13px;color:var(--text-muted);"></span>
+        </div>
       </div>
     </div>
+
+    <!-- Movement Tracker tab -->
+    <div id="exp-panel-track" style="display:none;">
+      <div class="card" style="padding:28px;margin-bottom:20px;">
+        <h2 style="margin:0 0 6px;font-size:1.15rem;font-weight:700;">🗺️ Document Movement Tracker</h2>
+        <p style="margin:0 0 20px;color:var(--text-muted);font-size:14px;">See the full journey of every document — who held it, how long, and where it went next.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+          <div class="form-group" style="margin:0;"><label class="form-label">From Date</label><input type="date" id="trk-from" class="form-control"></div>
+          <div class="form-group" style="margin:0;"><label class="form-label">To Date</label><input type="date" id="trk-to" class="form-control"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Document Type</label>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;"><input type="checkbox" id="trk-notesheet" value="Notesheet" checked style="width:16px;height:16px;"> Notesheet</label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;"><input type="checkbox" id="trk-bill" value="Bill" checked style="width:16px;height:16px;"> Bill</label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;"><input type="checkbox" id="trk-letter" value="Letter" checked style="width:16px;height:16px;"> Letter</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Document Number (optional)</label>
+          <input type="text" id="trk-docno" class="form-control" placeholder="e.g. WBSEDCL/2026/01 — leave blank for all" style="max-width:360px;">
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button class="btn btn-primary" onclick="loadMovementTracker()" style="padding:10px 24px;">🔍 Load Tracker</button>
+          <button class="btn" id="trk-csv-btn" onclick="doMovementExport()" style="display:none;padding:10px 24px;">⬇️ Download CSV</button>
+          <span id="trk-msg" style="font-size:13px;color:var(--text-muted);"></span>
+        </div>
+      </div>
+      <div id="trk-results"></div>
+    </div>
+
   </div>`;
+}
+
+function switchExpTab(tab) {
+  const isDocs = tab === 'docs';
+  document.getElementById('exp-panel-docs').style.display   = isDocs ? '' : 'none';
+  document.getElementById('exp-panel-track').style.display  = isDocs ? 'none' : '';
+  document.getElementById('exp-tab-docs').style.background  = isDocs ? 'var(--primary)' : 'transparent';
+  document.getElementById('exp-tab-docs').style.color       = isDocs ? '#fff' : 'var(--text-muted)';
+  document.getElementById('exp-tab-track').style.background = isDocs ? 'transparent' : 'var(--primary)';
+  document.getElementById('exp-tab-track').style.color      = isDocs ? 'var(--text-muted)' : '#fff';
 }
 
 async function doExport() {
@@ -1508,45 +1541,114 @@ async function doExport() {
   const types  = ['exp-notesheet','exp-bill','exp-letter']
     .filter(id => document.getElementById(id) && document.getElementById(id).checked)
     .map(id => document.getElementById(id).value);
-
-  if (types.length === 0) {
-    showToast('Select at least one document type', 'error'); return;
-  }
-
+  if (types.length === 0) { showToast('Select at least one document type', 'error'); return; }
   const btn = document.getElementById('exp-btn');
   const msg = document.getElementById('exp-msg');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparing...'; }
   if (msg) msg.textContent = '';
-
   try {
     let url = '/api/export/documents?';
     if (from)   url += 'from_date=' + encodeURIComponent(from) + '&';
     if (to)     url += 'to_date='   + encodeURIComponent(to)   + '&';
     if (status) url += 'status='    + encodeURIComponent(status) + '&';
     types.forEach(t => { url += 'doc_type=' + encodeURIComponent(t) + '&'; });
-
     const r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
-    if (!r.ok) {
-      const d = await r.json().catch(() => ({}));
-      showToast(d.error || 'Export failed', 'error'); return;
-    }
+    if (!r.ok) { const d = await r.json().catch(() => ({})); showToast(d.error || 'Export failed', 'error'); return; }
     const blob = await r.blob();
-    const count = parseInt(r.headers.get('X-Row-Count') || '0');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'WBSEDCL_Export_' + new Date().toISOString().slice(0,10) + '.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(a.href);
-    if (msg) msg.textContent = 'Downloaded successfully!';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+    if (msg) msg.textContent = 'Downloaded!';
     showToast('Export downloaded!');
-  } catch(e) {
-    showToast('Export error: ' + e.message, 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '⬇️ Download CSV'; }
-  }
+  } catch(e) { showToast('Export error: ' + e.message, 'error');
+  } finally { if (btn) { btn.disabled = false; btn.textContent = '⬇️ Download CSV'; } }
 }
+
+function _trkQueryUrl(format) {
+  const from  = document.getElementById('trk-from').value;
+  const to    = document.getElementById('trk-to').value;
+  const docno = (document.getElementById('trk-docno') || {}).value || '';
+  const types = ['trk-notesheet','trk-bill','trk-letter']
+    .filter(id => document.getElementById(id) && document.getElementById(id).checked)
+    .map(id => document.getElementById(id).value);
+  let url = '/api/export/movements?';
+  if (from)   url += 'from_date=' + encodeURIComponent(from)  + '&';
+  if (to)     url += 'to_date='   + encodeURIComponent(to)    + '&';
+  if (docno)  url += 'doc_number='+ encodeURIComponent(docno) + '&';
+  if (format) url += 'format='    + format + '&';
+  types.forEach(t => { url += 'doc_type=' + encodeURIComponent(t) + '&'; });
+  return url;
+}
+
+async function loadMovementTracker() {
+  const types = ['trk-notesheet','trk-bill','trk-letter'].filter(id => document.getElementById(id) && document.getElementById(id).checked);
+  if (types.length === 0) { showToast('Select at least one type', 'error'); return; }
+  const el = document.getElementById('trk-results');
+  el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Loading...</div>';
+  const csvBtn = document.getElementById('trk-csv-btn');
+  if (csvBtn) csvBtn.style.display = 'none';
+  try {
+    const r = await fetch(_trkQueryUrl(''), { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!r.ok) { el.innerHTML = '<div style="color:red;padding:20px;">Failed to load data</div>'; return; }
+    const rows = await r.json();
+    if (!rows.length) { el.innerHTML = empty('🗺️','No movement data found for the selected filters'); return; }
+
+    // Group by document
+    const docs = {};
+    const docOrder = [];
+    rows.forEach(r => {
+      if (!docs[r.doc_number]) { docs[r.doc_number] = []; docOrder.push(r.doc_number); }
+      docs[r.doc_number].push(r);
+    });
+
+    let html = '';
+    docOrder.forEach(dn => {
+      const mvs = docs[dn];
+      const first = mvs[0];
+      html += '<div class="card" style="margin-bottom:16px;overflow:hidden;">';
+      html += '<div class="card-header" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">';
+      html += '<div><strong>' + esc(first.doc_number) + '</strong> &nbsp; ' + typeBadge(first.doc_type) + ' &nbsp; <span style="color:var(--text-muted);font-size:13px;">' + esc(first.subject) + '</span></div>';
+      html += '<div>' + statusBadge(first.status) + ' &nbsp; <span style="font-size:12px;color:var(--text-muted);">Received: ' + fmtDate(first.received_date) + '</span></div>';
+      html += '</div>';
+      html += '<div class="table-wrapper"><table>';
+      html += '<thead><tr><th>#</th><th>Action</th><th>From</th><th>To</th><th>Date &amp; Time</th><th>Time Held by Receiver</th><th>Remarks</th></tr></thead><tbody>';
+      mvs.forEach(mv => {
+        const isOngoing = mv.time_held && mv.time_held.includes('ongoing');
+        html += '<tr>';
+        html += '<td style="color:var(--text-muted);font-size:12px;">' + mv.move_no + '</td>';
+        html += '<td><span style="font-size:12px;font-weight:600;color:#4f46e5;">' + esc(mv.action) + '</span></td>';
+        html += '<td><div style="font-size:13px;">' + esc(mv.from_user) + '</div><div style="font-size:11px;color:var(--text-muted);">' + esc(mv.from_section) + '</div></td>';
+        html += '<td><div style="font-size:13px;font-weight:600;">' + esc(mv.to_user) + '</div><div style="font-size:11px;color:var(--text-muted);">' + esc(mv.to_section) + '</div></td>';
+        html += '<td style="font-size:12px;color:var(--text-muted);">' + esc(mv.moved_at) + '</td>';
+        html += '<td><span style="font-size:12px;font-weight:600;color:' + (isOngoing ? '#f59e0b' : '#059669') + ';">' + esc(mv.time_held) + '</span></td>';
+        html += '<td style="font-size:12px;color:var(--text-muted);">' + esc(mv.remarks || '') + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table></div></div>';
+    });
+
+    el.innerHTML = '<div style="margin-bottom:12px;color:var(--text-muted);font-size:13px;">' + docOrder.length + ' document(s) &middot; ' + rows.length + ' movement(s)</div>' + html;
+    if (csvBtn) csvBtn.style.display = '';
+  } catch(e) { el.innerHTML = '<div style="color:red;padding:20px;">Error: ' + e.message + '</div>'; }
+}
+
+async function doMovementExport() {
+  const btn = document.getElementById('trk-csv-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparing...'; }
+  try {
+    const r = await fetch(_trkQueryUrl('csv'), { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!r.ok) { showToast('Export failed', 'error'); return; }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'WBSEDCL_Movement_Tracker_' + new Date().toISOString().slice(0,10) + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(a.href);
+    showToast('Movement tracker downloaded!');
+  } catch(e) { showToast('Error: ' + e.message, 'error');
+  } finally { if (btn) { btn.disabled = false; btn.textContent = '⬇️ Download CSV'; } }
+}
+
 
 
 // ── CONTRACTOR MANAGEMENT ────────────────────────────────────────────────────

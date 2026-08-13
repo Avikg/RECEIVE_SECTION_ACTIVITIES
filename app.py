@@ -1081,6 +1081,129 @@ def export_documents():
     return response
 
 
+@app.route('/api/export/movements')
+@auth_required
+def export_movements():
+    import csv, io
+    from flask import make_response
+    from datetime import datetime as dt
+
+    from_date  = request.args.get('from_date', '')
+    to_date    = request.args.get('to_date', '')
+    doc_types  = request.args.getlist('doc_type')
+    doc_number = request.args.get('doc_number', '').strip()
+    as_csv     = request.args.get('format', '') == 'csv'
+
+    doc_conds, doc_params = [], []
+    if from_date:
+        doc_conds.append("date(d.received_date) >= date(?)")
+        doc_params.append(from_date)
+    if to_date:
+        doc_conds.append("date(d.received_date) <= date(?)")
+        doc_params.append(to_date)
+    if doc_types:
+        ph = ','.join('?' * len(doc_types))
+        doc_conds.append(f"d.doc_type IN ({ph})")
+        doc_params.extend(doc_types)
+    if doc_number:
+        doc_conds.append("d.doc_number LIKE ?")
+        doc_params.append('%' + doc_number + '%')
+
+    doc_where = ('WHERE ' + ' AND '.join(doc_conds)) if doc_conds else ''
+
+    with get_db() as db:
+        docs = db.execute(f"""
+            SELECT d.id, d.doc_number, d.doc_type, d.subject, d.status, d.received_date
+            FROM documents d {doc_where}
+            ORDER BY d.received_date DESC, d.id DESC
+        """, doc_params).fetchall()
+
+        rows_out = []
+        for doc in docs:
+            movements = db.execute("""
+                SELECT m.id, m.action, m.remarks, m.created_at,
+                       fu.name AS from_user, fs.name AS from_section,
+                       tu.name AS to_user,   ts.name AS to_section
+                FROM movements m
+                LEFT JOIN users    fu ON m.from_user_id    = fu.id
+                LEFT JOIN sections fs ON m.from_section_id = fs.id
+                LEFT JOIN users    tu ON m.to_user_id      = tu.id
+                LEFT JOIN sections ts ON m.to_section_id   = ts.id
+                WHERE m.document_id = ?
+                ORDER BY m.created_at ASC
+            """, (doc['id'],)).fetchall()
+
+            now_str = dt.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            for i, mv in enumerate(movements):
+                # Time held = gap between this movement and the next one (or now for last)
+                if i + 1 < len(movements):
+                    next_dt = movements[i + 1]['created_at']
+                else:
+                    next_dt = now_str
+
+                try:
+                    t1 = dt.strptime(mv['created_at'][:19], '%Y-%m-%d %H:%M:%S')
+                    t2 = dt.strptime(next_dt[:19],          '%Y-%m-%d %H:%M:%S')
+                    diff = t2 - t1
+                    total_mins = int(diff.total_seconds() / 60)
+                    days  = diff.days
+                    hours = (total_mins % (24 * 60)) // 60
+                    mins  = total_mins % 60
+                    if days > 0:
+                        time_held = f"{days}d {hours}h {mins}m"
+                    elif hours > 0:
+                        time_held = f"{hours}h {mins}m"
+                    else:
+                        time_held = f"{mins}m"
+                    is_current = (i + 1 == len(movements))
+                    time_label = (time_held + ' (ongoing)') if is_current and doc['status'] == 'Active' else time_held
+                except Exception:
+                    time_label = '-'
+
+                rows_out.append({
+                    'doc_number':   doc['doc_number'],
+                    'doc_type':     doc['doc_type'],
+                    'subject':      doc['subject'],
+                    'status':       doc['status'],
+                    'received_date':doc['received_date'],
+                    'move_no':      i + 1,
+                    'action':       mv['action'],
+                    'from_user':    mv['from_user'] or '-',
+                    'from_section': mv['from_section'] or '-',
+                    'to_user':      mv['to_user'] or '-',
+                    'to_section':   mv['to_section'] or '-',
+                    'moved_at':     mv['created_at'],
+                    'time_held':    time_label,
+                    'remarks':      mv['remarks'] or '',
+                })
+
+    if as_csv:
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            'Document No', 'Type', 'Subject', 'Doc Status', 'Received Date',
+            'Move #', 'Action',
+            'From Person', 'From Section',
+            'To Person',   'To Section',
+            'Moved At', 'Time Held by Receiver', 'Remarks'
+        ])
+        for r in rows_out:
+            writer.writerow([
+                r['doc_number'], r['doc_type'], r['subject'], r['status'], r['received_date'],
+                r['move_no'], r['action'],
+                r['from_user'], r['from_section'],
+                r['to_user'],   r['to_section'],
+                r['moved_at'],  r['time_held'],  r['remarks']
+            ])
+        fname = 'WBSEDCL_Movement_Tracker_' + dt.now().strftime('%Y%m%d_%H%M%S') + '.csv'
+        resp = make_response(output.getvalue())
+        resp.headers['Content-Type']        = 'text/csv; charset=utf-8'
+        resp.headers['Content-Disposition'] = 'attachment; filename="' + fname + '"'
+        return resp
+
+    return jsonify(rows_out)
+
 @app.route('/api/admin/backup')
 @auth_required
 @admin_required
