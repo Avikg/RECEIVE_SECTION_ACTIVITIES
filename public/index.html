@@ -503,7 +503,7 @@ async function renderMyDocs() {
     window._myDocs = docs;
     C.innerHTML = `
       <div class="filter-bar">
-        <input type="text" id="md-q" placeholder="Search..." onkeyup="filterMyDocs()" style="flex:1;min-width:160px">
+        <input type="text" id="md-q" placeholder="Search by doc no, subject or CCC forward no..." onkeyup="filterMyDocs()" style="flex:1;min-width:200px">
         <select id="md-type" onchange="filterMyDocs()">
           <option value="">All Types</option><option>Notesheet</option><option>Bill</option><option>Letter</option>
         </select>
@@ -520,7 +520,7 @@ function filterMyDocs() {
   const type = document.getElementById('md-type').value;
   const status = document.getElementById('md-status').value;
   let d = window._myDocs || [];
-  if (q) d = d.filter(x => x.doc_number.toLowerCase().includes(q) || x.subject.toLowerCase().includes(q));
+  if (q) d = d.filter(x => (x.doc_number||'').toLowerCase().includes(q) || (x.subject||'').toLowerCase().includes(q) || (x.ccc_forward_no||'').toLowerCase().includes(q));
   if (type) d = d.filter(x => x.doc_type === type);
   if (status) d = d.filter(x => x.status === status);
   document.getElementById('md-table').innerHTML = docsTable(d);
@@ -1508,9 +1508,15 @@ function renderExport() {
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;"><input type="checkbox" id="trk-letter" value="Letter" checked style="width:16px;height:16px;"> Letter</label>
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Document Number (optional)</label>
-          <input type="text" id="trk-docno" class="form-control" placeholder="e.g. WBSEDCL/2026/01 — leave blank for all" style="max-width:360px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">Document Number (optional)</label>
+            <input type="text" id="trk-docno" class="form-control" placeholder="e.g. WBSEDCL/2026/01">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">CCC Forward No (optional)</label>
+            <input type="text" id="trk-cccno" class="form-control" placeholder="e.g. CCC/2026/001">
+          </div>
         </div>
         <div style="display:flex;gap:10px;align-items:center;">
           <button class="btn btn-primary" onclick="loadMovementTracker()" style="padding:10px 24px;">🔍 Load Tracker</button>
@@ -1576,6 +1582,8 @@ function _trkQueryUrl(format) {
   if (from)   url += 'from_date=' + encodeURIComponent(from)  + '&';
   if (to)     url += 'to_date='   + encodeURIComponent(to)    + '&';
   if (docno)  url += 'doc_number='+ encodeURIComponent(docno) + '&';
+  const cccno = (document.getElementById('trk-cccno') || {}).value || '';
+  if (cccno)  url += 'ccc_no=' + encodeURIComponent(cccno) + '&';
   if (format) url += 'format='    + format + '&';
   types.forEach(t => { url += 'doc_type=' + encodeURIComponent(t) + '&'; });
   return url;

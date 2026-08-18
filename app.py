@@ -1108,6 +1108,10 @@ def export_movements():
     if doc_number:
         doc_conds.append("d.doc_number LIKE ?")
         doc_params.append('%' + doc_number + '%')
+    ccc_no = request.args.get('ccc_no', '').strip()
+    if ccc_no:
+        doc_conds.append("d.ccc_forward_no LIKE ?")
+        doc_params.append('%' + ccc_no + '%')
 
     doc_where = ('WHERE ' + ' AND '.join(doc_conds)) if doc_conds else ''
 
