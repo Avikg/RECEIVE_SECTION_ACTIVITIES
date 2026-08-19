@@ -98,6 +98,12 @@ def init_db():
                 active     INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
             );
+            CREATE TABLE IF NOT EXISTS subjects (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT NOT NULL UNIQUE,
+                active     INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            );
         """)
         row = db.execute("SELECT COUNT(*) as c FROM sections").fetchone()
         if row['c'] == 0:
@@ -185,6 +191,31 @@ def migrate_db():
         if seeded:
             conn.commit()
             print(f"Seeded {seeded} contractor name(s) from existing documents")
+        # Create subjects table if missing
+        tables2 = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        if 'subjects' not in tables2:
+            conn.execute('''CREATE TABLE subjects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )''')
+            print("Created subjects table")
+            conn.commit()
+        # Seed subjects from existing document subjects
+        sub_rows = conn.execute(
+            "SELECT DISTINCT subject FROM documents WHERE subject IS NOT NULL AND subject != ''"
+        ).fetchall()
+        sub_seeded = 0
+        for r in sub_rows:
+            try:
+                conn.execute("INSERT OR IGNORE INTO subjects (name) VALUES (?)", (r[0],))
+                sub_seeded += 1
+            except Exception:
+                pass
+        if sub_seeded:
+            conn.commit()
+            print(f"Seeded {sub_seeded} subject(s) from existing documents")
         row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='movements'").fetchone()
         if row and 'Routed' not in row['sql']:
             print("Migrating movements table to add Routed action...")
@@ -923,6 +954,74 @@ def activity_log():
             ORDER BY m.created_at DESC
         """, params).fetchall()
         return jsonify([dict(r) for r in rows])
+
+# ── SUBJECTS ─────────────────────────────────────────────────────────────────
+@app.route('/api/subjects', methods=['GET'])
+@auth_required
+def list_subjects():
+    with get_db() as db:
+        rows = db.execute("SELECT * FROM subjects ORDER BY name").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/subjects', methods=['POST'])
+@auth_required
+def create_subject():
+    if request.user['role'] not in ('admin',) and not _is_receive(request.user):
+        return jsonify(error='Not authorised'), 403
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify(error='Name is required'), 400
+    with get_db() as db:
+        try:
+            db.execute("INSERT INTO subjects (name) VALUES (?)", (name,))
+            db.commit()
+            row = db.execute("SELECT * FROM subjects WHERE name=?", (name,)).fetchone()
+            return jsonify(dict(row)), 201
+        except Exception:
+            return jsonify(error='Subject already exists'), 409
+
+@app.route('/api/subjects/<int:sid>', methods=['PUT'])
+@auth_required
+def update_subject(sid):
+    if request.user['role'] not in ('admin',) and not _is_receive(request.user):
+        return jsonify(error='Not authorised'), 403
+    data = request.json or {}
+    name   = (data.get('name') or '').strip()
+    active = data.get('active', 1)
+    if not name:
+        return jsonify(error='Name is required'), 400
+    with get_db() as db:
+        if not db.execute("SELECT id FROM subjects WHERE id=?", (sid,)).fetchone():
+            return jsonify(error='Not found'), 404
+        try:
+            db.execute("UPDATE subjects SET name=?, active=? WHERE id=?", (name, active, sid))
+            db.commit()
+            return jsonify(dict(db.execute("SELECT * FROM subjects WHERE id=?", (sid,)).fetchone()))
+        except Exception:
+            return jsonify(error='Name already exists'), 409
+
+@app.route('/api/subjects/<int:sid>', methods=['DELETE'])
+@auth_required
+def delete_subject(sid):
+    if request.user['role'] not in ('admin',) and not _is_receive(request.user):
+        return jsonify(error='Not authorised'), 403
+    with get_db() as db:
+        if not db.execute("SELECT id FROM subjects WHERE id=?", (sid,)).fetchone():
+            return jsonify(error='Not found'), 404
+        db.execute("DELETE FROM subjects WHERE id=?", (sid,))
+        db.commit()
+    return jsonify(ok=True)
+
+def _is_receive(user):
+    if not user.get('section_id'):
+        return False
+    try:
+        with get_db() as db:
+            sec = db.execute("SELECT name FROM sections WHERE id=?", (user['section_id'],)).fetchone()
+            return sec and 'receive' in sec['name'].lower()
+    except Exception:
+        return False
 
 # ── CONTRACTORS ──────────────────────────────────────────────────────────────
 @app.route('/api/contractors', methods=['GET'])

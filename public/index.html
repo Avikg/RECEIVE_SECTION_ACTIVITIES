@@ -337,11 +337,12 @@ const NAV = [
   { id: 'activity',  icon: '🕐', label: 'Activity Log',       roles: ['admin'] },
   { id: 'export',    icon: '📤', label: 'Export to Excel',    roles: ['admin','head','sectional'] },
   { id: 'contractors', icon: '🏢', label: 'Contractor Mgmt',    roles: ['admin'] },
+  { id: 'subjects',    icon: '📋', label: 'Subject Management', roles: ['admin','sectional'] },
 ];
 const PAGE_TITLES = {
   dashboard: 'Dashboard', 'my-docs': 'My Documents', receive: 'Receive Document',
   search: 'Search Documents', reports: 'Reports', users: 'User Management',
-  sections: 'Section Management', activity: 'Activity Log', export: 'Export to Excel', contractors: 'Contractor Management'
+  sections: 'Section Management', activity: 'Activity Log', export: 'Export to Excel', contractors: 'Contractor Management', subjects: 'Subject Management'
 };
 
 function buildNav() {
@@ -367,7 +368,7 @@ function navigate(page) {
   const PAGES = {
     dashboard: renderDashboard, 'my-docs': renderMyDocs, receive: renderReceive,
     search: renderSearch, reports: renderReports, users: renderUsers,
-    sections: renderSections, activity: renderActivity, export: renderExport, contractors: renderContractors
+    sections: renderSections, activity: renderActivity, export: renderExport, contractors: renderContractors, subjects: renderSubjects
   };
   if (PAGES[page]) PAGES[page]();
 }
@@ -615,7 +616,8 @@ function renderReceive() {
 
           <div class="form-group">
             <label>Subject *</label>
-            <input id="rv-sub" placeholder="Enter a clear and descriptive subject line" style="font-size:14px;padding:12px 16px;">
+            <input id="rv-sub" list="rv-sub-list" placeholder="Type or select a subject..." autocomplete="off" style="font-size:14px;padding:12px 16px;">
+            <datalist id="rv-sub-list"></datalist>
           </div>
 
           <div class="form-group">
@@ -649,6 +651,7 @@ function renderReceive() {
       </div>
     </div>`;
   loadContractorDropdown('rv-contractor', '');
+  loadSubjectDatalist();
 }
 async function submitReceive() {
   const doc_type         = document.getElementById('rv-type').value;
@@ -1792,6 +1795,108 @@ async function deleteContractor(id, name) {
     showToast('Deleted!');
     renderContractors();
   } catch(e) { showToast('Error: ' + e.message, 'error'); }
+}
+
+
+// ── SUBJECT MANAGEMENT ───────────────────────────────────────────────────────
+async function loadSubjectDatalist() {
+  try {
+    const r = await fetch('/api/subjects',{headers:{'Authorization':'Bearer '+token}});
+    const list = await r.json();
+    const dl = document.getElementById('rv-sub-list');
+    if (!dl) return;
+    dl.innerHTML = list.filter(s=>s.active).map(s=>'<option value="'+esc(s.name)+'">').join('');
+  } catch(e) {}
+}
+
+async function renderSubjects() {
+  const C = document.getElementById('page-content');
+  C.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-muted);">Loading...</div>';
+  let rows = [];
+  try { const r=await fetch('/api/subjects',{headers:{'Authorization':'Bearer '+token}}); rows=await r.json(); }
+  catch(e){ showToast('Failed to load','error'); return; }
+  C.innerHTML = `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+    <div><h3 style="margin:0;font-weight:700;">${rows.length} Subject(s)</h3>
+    <p style="margin:4px 0 0;font-size:13px;color:var(--text-muted);">Subjects available in the Receive Document form</p></div>
+    <button class="btn btn-primary" onclick="openAddSubject()">+ Add New</button>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table class="table">
+      <thead><tr><th>#</th><th>Subject</th><th>Status</th><th>Added On</th><th>Actions</th></tr></thead>
+      <tbody>
+      ${rows.length===0?'<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-muted);">No subjects yet.</td></tr>':''}
+      ${rows.map((s,i)=>`<tr>
+        <td>${i+1}</td>
+        <td>${esc(s.name)}</td>
+        <td><span class="badge ${s.active?'badge-success':'badge-danger'}">${s.active?'Active':'Inactive'}</span></td>
+        <td style="color:var(--text-muted);font-size:13px;">${(s.created_at||'').slice(0,10)}</td>
+        <td>
+          <button class="btn btn-sm" style="margin-right:6px;" onclick="openEditSubject(${s.id},'${esc(s.name)}',${s.active})">Edit</button>
+          <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border-color:#fca5a5;" onclick="deleteSubject(${s.id},'${esc(s.name)}')">Delete</button>
+        </td></tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  <div id="modal-subject" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center;">
+    <div class="card" style="width:500px;padding:32px;position:relative;">
+      <h3 id="sub-modal-title" style="margin:0 0 20px;">Add Subject</h3>
+      <input type="hidden" id="sub-edit-id">
+      <div class="form-group">
+        <label class="form-label">Subject Text *</label>
+        <textarea id="sub-name" class="form-control" rows="3" placeholder="Enter the subject text"></textarea>
+      </div>
+      <div class="form-group" id="sub-active-wrap" style="display:none;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="sub-active" checked> Active (appears in dropdown)
+        </label>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">
+        <button class="btn" onclick="closeSubjectModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveSubject()">Save</button>
+      </div>
+    </div>
+  </div>`;
+}
+function openAddSubject(){
+  document.getElementById('sub-modal-title').textContent='Add Subject';
+  document.getElementById('sub-edit-id').value='';
+  document.getElementById('sub-name').value='';
+  document.getElementById('sub-active').checked=true;
+  document.getElementById('sub-active-wrap').style.display='none';
+  const m=document.getElementById('modal-subject'); if(m){m.style.display='flex';}
+}
+function openEditSubject(id,name,active){
+  document.getElementById('sub-modal-title').textContent='Edit Subject';
+  document.getElementById('sub-edit-id').value=id;
+  document.getElementById('sub-name').value=name;
+  document.getElementById('sub-active').checked=!!active;
+  document.getElementById('sub-active-wrap').style.display='block';
+  const m=document.getElementById('modal-subject'); if(m){m.style.display='flex';}
+}
+function closeSubjectModal(){ const m=document.getElementById('modal-subject'); if(m) m.style.display='none'; }
+async function saveSubject(){
+  const id=document.getElementById('sub-edit-id').value;
+  const name=document.getElementById('sub-name').value.trim();
+  const active=document.getElementById('sub-active').checked?1:0;
+  if(!name){showToast('Subject text is required','error');return;}
+  try{
+    const method=id?'PUT':'POST';
+    const url=id?'/api/subjects/'+id:'/api/subjects';
+    const r=await fetch(url,{method,headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({name,active})});
+    const d=await r.json();
+    if(!r.ok){showToast(d.error||'Save failed','error');return;}
+    showToast(id?'Subject updated!':'Subject added!');
+    closeSubjectModal(); renderSubjects();
+  }catch(e){showToast('Error: '+e.message,'error');}
+}
+async function deleteSubject(id,name){
+  if(!confirm('Delete "'+name+'"? Existing documents are not affected.')) return;
+  try{
+    const r=await fetch('/api/subjects/'+id,{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
+    if(!r.ok){showToast('Delete failed','error');return;}
+    showToast('Deleted!'); renderSubjects();
+  }catch(e){showToast('Error: '+e.message,'error');}
 }
 
 </script>
